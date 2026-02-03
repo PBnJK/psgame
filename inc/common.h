@@ -1,5 +1,5 @@
-#ifndef GUARD_CITYPEEP_COMMON_H_
-#define GUARD_CITYPEEP_COMMON_H_
+#ifndef GUARD_PSGAME_COMMON_H_
+#define GUARD_PSGAME_COMMON_H_
 
 #include <sys/types.h>
 
@@ -19,4 +19,4 @@ typedef int bool;
 	(((x) >> 24) | (((x) >> 8) & 0xFF00) | (((x) << 8) & 0x00FF0000)           \
 		| ((x) << 24))
 
-#endif // !GUARD_CITYPEEP_COMMON_H_
+#endif // !GUARD_PSGAME_COMMON_H_

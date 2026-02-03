@@ -15,6 +15,8 @@ CPPFLAGS += -I$(CURRDIR)psyq/include
 CPPFLAGS += -I$(CURRDIR)inc
 CPPFLAGS += -Wall -Wextra -pedantic
 
+CFLAGS := $(CPPFLAGS)
+
 ifeq ($(BUILD),Debug)
 DEFINES += DEBUG
 else
@@ -50,13 +52,13 @@ LDFLAGS += -lcd
 LDFLAGS += -Wl,--end-group
 
 SRCS := $(SRCDIR)/main.c
-#SRCS += $(SRCDIR)/cd.c
+SRCS += $(SRCDIR)/cd.c
 #SRCS += $(SRCDIR)/gfx.c
-#SRCS += $(SRCDIR)/image.c
-#SRCS += $(SRCDIR)/input.c
-#SRCS += $(SRCDIR)/mem.c
+SRCS += $(SRCDIR)/image.c
+SRCS += $(SRCDIR)/input.c
+SRCS += $(SRCDIR)/mem.c
 #SRCS += $(SRCDIR)/save.c
-#SRCS += $(SRCDIR)/sprite.c
+SRCS += $(SRCDIR)/sprite.c
 
 SRCS += $(CURRDIR)nugget/common/crt0/crt0.s
 SRCS += $(CURRDIR)nugget/common/syscalls/printf.s

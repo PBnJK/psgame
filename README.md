@@ -1,3 +1,3 @@
 # psgame
 
-A bonafide PS1 game!
+A bona fide PS1 game!
