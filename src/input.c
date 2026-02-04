@@ -37,8 +37,8 @@ void input_quit(void) {
 void input_update(void) {
 	u_int p1_bits, p2_bits, i;
 
-	p1_bits = (PAD_P1(2) | (PAD_P1(3) << 8)) ^ 0xffff;
-	p2_bits = (PAD_P2(2) | (PAD_P2(3) << 8)) ^ 0xffff;
+	p1_bits = (PAD_P1_RAW(2) | (PAD_P1_RAW(3) << 8)) ^ 0xffff;
+	p2_bits = (PAD_P2_RAW(2) | (PAD_P2_RAW(3) << 8)) ^ 0xffff;
 
 	for( i = 0; i < 16; ++i ) {
 		u_int mask = (1 << i);

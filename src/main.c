@@ -7,6 +7,7 @@
 
 #include <libetc.h>
 
+#include "camera.h"
 #include "common.h"
 
 #include "cd.h"
@@ -14,6 +15,9 @@
 #include "input.h"
 #include "mem.h"
 #include "text.h"
+
+static Camera camera;
+static Model cube;
 
 static void _init(void);
 static void _quit(void);
@@ -26,9 +30,11 @@ int main(void) {
 	_init();
 
 	text_init_font(&my_font, "\\FNT\\BIG;1", 10, 12);
+	gfx_load_model(&cube, "\\MDL\\CUBE;1", 0);
 
 	while( true ) {
-		text_draw(&my_font, 32, 32, "Hello from PS1!\0");
+		text_draw(&my_font, 32, 32, "Hello from PS1!");
+		gfx_draw_model(&camera, &cube);
 		gfx_display();
 	}
 
@@ -40,6 +46,7 @@ int main(void) {
 static void _init(void) {
 	ResetCallback();
 
+	LOG("INITIALIZING EVERYTHING...\n");
 	cd_init();
 	mem_init();
 	input_init();
@@ -56,4 +63,8 @@ static void _quit(void) {
 	StopCallback();
 }
 
-static void _update(void) { }
+static void _update(void) {
+	cam_update(&camera);
+	LOG("T: %d %d %d\n", camera.trans.vx, camera.trans.vy, camera.trans.vz);
+	LOG("R: %d %d %d\n", camera.rot.vx, camera.rot.vy, camera.rot.vz);
+}

@@ -8,7 +8,13 @@
 #include <libgte.h>
 #include <libgpu.h>
 
+#include <inline_n.h>
+#include "cd.h"
+#include "cpu_macros.h"
+
 #include "common.h"
+#include "image.h"
+#include "mem.h"
 
 #include "gfx.h"
 
@@ -24,6 +30,12 @@
 #define DEBUG_COLOR_R (32)
 #define DEBUG_COLOR_G (128)
 #define DEBUG_COLOR_B (32)
+
+/* Clip bitmask */
+#define CLIP_LEFT 1
+#define CLIP_RIGHT 2
+#define CLIP_UP 4
+#define CLIP_DOWN 8
 
 static DISPENV disp[2];
 static DRAWENV draw[2];
@@ -43,10 +55,41 @@ static char primitive_buffer[2][PACKET_LENGTH] = { 0 };
 static volatile u_char active_buffer = 0;
 static char *next_primitive = primitive_buffer[0];
 
+static MATRIX color_matrix = {
+	{
+		{ ONE * 3 / 4, 0, 0 }, /* Red */
+		{ ONE * 3 / 4, 0, 0 }, /* Green */
+		{ ONE * 3 / 4, 0, 0 }, /* Blue */
+	},
+	{ 0, 0, 0 },
+};
+
+static MATRIX light_matrix = {
+	{
+		{ -2048, -2048, -2048 },
+		{ 0, 0, 0 },
+		{ 0, 0, 0 },
+	},
+	{ 0, 0, 0 },
+};
+
+static int gte_result;
+static int otz;
+
+/* Primitives */
+static POLY_F3 *p_poly_f3;
+static POLY_FT3 *p_poly_ft3;
+
 static SPRT *p_spr;
 
 static DR_TPAGE *p_dr_tpage;
 static DR_STP *p_dr_stp;
+
+/* Tests if a vertex is within the bounds of the screen */
+static int _test_clip(short x, short y);
+
+/* Tests if a triangle should be clipped */
+static int _test_tri_clip(DVECTOR *v0, DVECTOR *v1, DVECTOR *v2);
 
 void gfx_init(void) {
 	LOG("* INIT GFX\n");
@@ -107,6 +150,15 @@ void gfx_init(void) {
 	/* Define the screen dimensions */
 	setRECT(&screen, 0, 0, SCR_WIDTH, SCR_HEIGHT);
 
+	/* Initialize the GTE */
+	InitGeom();
+	gte_SetGeomOffset(SCR_CENTER_WIDTH, SCR_CENTER_HEIGHT);
+	gte_SetGeomScreen(SCR_CENTER_WIDTH);
+
+	/* Fog setup */
+	gte_SetBackColor(63, 63, 63);
+	gte_SetColorMatrix(&color_matrix);
+
 	/* Setup ordering tables */
 	next_primitive = primitive_buffer[active_buffer];
 	ClearOTagR(ot[active_buffer], OT_LENGTH);
@@ -132,6 +184,333 @@ void gfx_display(void) {
 	next_primitive = primitive_buffer[active_buffer];
 
 	ClearOTagR(ot[active_buffer], OT_LENGTH);
+}
+
+void gfx_init_model(Model *model) {
+	setVector(&model->rot, 0, 0, 0);
+	setVector(&model->trans, 0, 0, 0);
+	setVector(&model->scale, ONE, ONE, ONE);
+}
+
+u_int gfx_load_model(Model *model, const char *FILENAME, const char *TEX) {
+	u_long *data = cd_load_file_with_name(FILENAME);
+	u_int size = gfx_load_model_from_ptr(model, data, TEX);
+
+	mem_free(data);
+	return size;
+}
+
+u_int gfx_load_model_from_ptr(Model *model, u_long *data, const char *TEX) {
+	u_int i, j, actual_w;
+	u_long *data_start = data;
+	Mesh *mesh;
+
+	LOG("* LOADING MODEL...\n");
+
+	gfx_init_model(model);
+	gfx_load_model_texture(model, TEX, &actual_w);
+
+	model->mesh_count = *data++;
+
+	LOG("- mesh count: %d\n", model->mesh_count);
+
+	for( i = 0; i < model->mesh_count; ++i ) {
+		LOG(". * MESH #%d\n", i);
+		mesh = &model->meshes[i];
+
+		mesh->vertex_count = *data;
+		mesh->face_count = (*data++) >> 16;
+		mesh->normal_count = *data;
+		mesh->uv_count = (*data++) >> 16;
+
+		LOG(". - v count: %d\n", mesh->vertex_count);
+		LOG(". - f count: %d\n", mesh->face_count);
+		LOG(". - n count: %d\n", mesh->normal_count);
+		LOG(". - t count: %d\n", mesh->uv_count);
+
+		/* Load vertices */
+		LOG(". - VERTEX:\n");
+		for( j = 0; j < mesh->vertex_count; ++j ) {
+			mesh->verts[j].vx = *data;
+			mesh->verts[j].vy = (*data++) >> 16;
+			mesh->verts[j].vz = *data;
+
+			LOG(". . - %d %d %d:\n", mesh->verts[j].vx, mesh->verts[j].vy,
+				mesh->verts[j].vz);
+
+			if( ++j < mesh->vertex_count ) {
+				mesh->verts[j].vx = (*data++) >> 16;
+				mesh->verts[j].vy = *data;
+				mesh->verts[j].vz = (*data++) >> 16;
+
+				LOG(". . - %d %d %d:\n", mesh->verts[j].vx, mesh->verts[j].vy,
+					mesh->verts[j].vz);
+			}
+		}
+
+		if( mesh->vertex_count % 2 ) {
+			++data;
+		}
+
+		/* Load faces */
+		LOG(". - FACE:\n");
+		for( j = 0; j < mesh->face_count; ++j ) {
+			mesh->faces[j].vx = *data;
+			mesh->faces[j].vy = (*data++) >> 16;
+			mesh->faces[j].vz = *data;
+
+			LOG(". . - %d %d %d:\n", mesh->faces[j].vx, mesh->faces[j].vy,
+				mesh->faces[j].vz);
+
+			if( ++j < mesh->face_count ) {
+				mesh->faces[j].vx = (*data++) >> 16;
+				mesh->faces[j].vy = *data;
+				mesh->faces[j].vz = (*data++) >> 16;
+
+				LOG(". . - %d %d %d:\n", mesh->faces[j].vx, mesh->faces[j].vy,
+					mesh->faces[j].vz);
+			}
+		}
+
+		if( mesh->face_count % 2 ) {
+			++data;
+		}
+
+		/* Load normals */
+		LOG(". - NORMAL:\n");
+		for( j = 0; j < mesh->normal_count; ++j ) {
+			mesh->normals[j].vx = *data;
+			mesh->normals[j].vy = (*data++) >> 16;
+			mesh->normals[j].vz = *data;
+
+			LOG(". . - %d %d %d:\n", mesh->normals[j].vx, mesh->normals[j].vy,
+				mesh->normals[j].vz);
+
+			if( ++j < mesh->normal_count ) {
+				mesh->normals[j].vx = (*data++) >> 16;
+				mesh->normals[j].vy = *data;
+				mesh->normals[j].vz = (*data++) >> 16;
+
+				LOG(". . - %d %d %d:\n", mesh->normals[j].vx,
+					mesh->normals[j].vy, mesh->normals[j].vz);
+			}
+		}
+
+		if( mesh->normal_count % 2 ) {
+			++data;
+		}
+
+		/* Load normal indices */
+		LOG(". - NIDX:\n");
+		for( j = 0; j < mesh->face_count; ++j ) {
+			mesh->nidxs[j].vx = *data;
+			mesh->nidxs[j].vy = (*data++) >> 16;
+			mesh->nidxs[j].vz = *data;
+
+			LOG(". . - %d %d %d:\n", mesh->nidxs[j].vx, mesh->nidxs[j].vy,
+				mesh->nidxs[j].vz);
+
+			if( ++j < mesh->face_count ) {
+				mesh->nidxs[j].vx = (*data++) >> 16;
+				mesh->nidxs[j].vy = *data;
+				mesh->nidxs[j].vz = (*data++) >> 16;
+
+				LOG(". . - %d %d %d:\n", mesh->nidxs[j].vx, mesh->nidxs[j].vy,
+					mesh->nidxs[j].vz);
+			}
+		}
+
+		if( mesh->face_count % 2 ) {
+			++data;
+		}
+
+		/* Load UVs */
+		LOG(". - UV:\n");
+		for( j = 0; j < mesh->uv_count; ++j ) {
+			mesh->uvs[j].u = *data;
+			mesh->uvs[j].v = (*data) >> 8;
+
+			LOG(". . - %d %d:\n", mesh->uvs[j].u, mesh->uvs[j].v);
+
+			if( ++j < mesh->uv_count ) {
+				mesh->uvs[j].u = (*data) >> 16;
+				mesh->uvs[j].v = (*data++) >> 24;
+
+				LOG(". . - %d %d:\n", mesh->uvs[j].u, mesh->uvs[j].v);
+			}
+		}
+
+		if( mesh->uv_count % 2 ) {
+			++data;
+		}
+
+		/* Load texture indices */
+		LOG(". - UVIDX:\n");
+		for( j = 0; j < mesh->face_count; ++j ) {
+			mesh->uvidxs[j].vx = *data;
+			mesh->uvidxs[j].vy = (*data++) >> 16;
+			mesh->uvidxs[j].vz = *data;
+
+			LOG(". . - %d %d %d:\n", mesh->uvidxs[j].vx, mesh->uvidxs[j].vy,
+				mesh->uvidxs[j].vz);
+
+			if( ++j < mesh->face_count ) {
+				mesh->uvidxs[j].vx = (*data++) >> 16;
+				mesh->uvidxs[j].vy = *data;
+				mesh->uvidxs[j].vz = (*data++) >> 16;
+
+				LOG(". . - %d %d %d:\n", mesh->uvidxs[j].vx, mesh->uvidxs[j].vy,
+					mesh->uvidxs[j].vz);
+			}
+		}
+
+		if( mesh->face_count % 2 ) {
+			++data;
+		}
+	}
+
+	return data - data_start;
+}
+
+void gfx_setup_texture(Model *model) {
+	RECT *prect = model->tex.prect;
+	RECT *crect = model->tex.prect;
+
+	model->tpage = getTPage(model->tex.mode & 0x3, 0, prect->x, prect->y);
+	model->clut = getClut(crect->x, crect->y);
+}
+
+void gfx_load_model_texture(Model *model, const char *TEX, u_int *width) {
+	if( !TEX ) {
+		return;
+	}
+
+	image_load(TEX, &model->tex);
+	if( width ) {
+		*width = model->tex.prect->w;
+		switch( model->tex.mode & 0x3 ) {
+		case 0:
+			*width *= 2;
+			/* fallthrough */
+		case 1:
+			*width *= 2;
+		}
+	}
+
+	gfx_setup_texture(model);
+}
+
+void gfx_draw_model(Camera *camera, Model *model) {
+	MATRIX omtx, lmtx;
+	u_int i, j;
+	Mesh *mesh;
+
+	PushMatrix();
+
+	RotMatrix_gte(&model->rot, &omtx);
+	TransMatrix(&omtx, &model->trans);
+	ScaleMatrix(&omtx, &model->scale);
+
+	MulMatrix0(&light_matrix, &omtx, &lmtx);
+	gte_SetLightMatrix(&lmtx);
+
+	CompMatrixLV(&camera->mat, &omtx, &omtx);
+
+	gte_SetRotMatrix(&omtx);
+	gte_SetTransMatrix(&omtx);
+
+	p_poly_f3 = (POLY_F3 *)next_primitive;
+
+	for( i = 0; i < model->mesh_count; ++i ) {
+		mesh = &model->meshes[i];
+
+		for( j = 0; j < mesh->face_count; ++j ) {
+			gte_ldv3(&mesh->verts[mesh->faces[j].vx],
+				&mesh->verts[mesh->faces[j].vy],
+				&mesh->verts[mesh->faces[j].vz]);
+
+			gte_rtpt();
+
+			gte_nclip();
+			gte_stopz(&gte_result);
+			if( gte_result > 0 ) {
+				continue;
+			}
+
+			gte_avsz3();
+			gte_stotz(&otz);
+
+			otz >>= 2;
+			if( otz <= 5 || otz >= OT_LENGTH ) {
+				continue;
+			}
+
+			gfx_set_poly_f3();
+		}
+	}
+
+	next_primitive = (char *)p_poly_f3;
+
+	PopMatrix();
+}
+
+void gfx_set_poly_f3(void) {
+	setPolyF3(p_poly_f3);
+
+	gte_stsxy3(&p_poly_f3->x0, &p_poly_f3->x1, &p_poly_f3->x2);
+	if( _test_tri_clip((DVECTOR *)&p_poly_f3->x0, (DVECTOR *)&p_poly_f3->x1,
+			(DVECTOR *)&p_poly_f3->x2) ) {
+		return;
+	}
+
+	setRGB0(p_poly_f3, 128, 128, 128);
+
+	gte_stdp(&gte_result);
+	gte_stflg(&gte_result);
+
+	gte_stszotz(&gte_result);
+	gte_result /= 3;
+
+	if( gte_result > 0 && gte_result < OT_LENGTH ) {
+		addPrim(ot[active_buffer] + otz, p_poly_f3);
+	}
+
+	++p_poly_f3;
+}
+
+void gfx_set_poly_ft3(Mesh *mesh, const u_int i, u_short tpage, u_short clut) {
+	setPolyFT3(p_poly_ft3);
+
+	gte_stsxy3(&p_poly_ft3->x0, &p_poly_ft3->x1, &p_poly_ft3->x2);
+	if( _test_tri_clip((DVECTOR *)&p_poly_ft3->x0, (DVECTOR *)&p_poly_ft3->x1,
+			(DVECTOR *)&p_poly_ft3->x2) ) {
+		return;
+	}
+
+	setRGB0(p_poly_ft3, 128, 128, 128);
+
+	gte_ldrgb(&p_poly_ft3->r0);
+	gte_ldv0(&mesh->normals[mesh->nidxs[i].vx]);
+	gte_ncs();
+
+	gte_strgb(&p_poly_ft3->r0);
+
+	setUV3(p_poly_ft3, mesh->uvs[mesh->uvidxs[i].vx].u,
+		mesh->uvs[mesh->uvidxs[i].vx].v, mesh->uvs[mesh->uvidxs[i].vy].u,
+		mesh->uvs[mesh->uvidxs[i].vy].v, mesh->uvs[mesh->uvidxs[i].vz].u,
+		mesh->uvs[mesh->uvidxs[i].vz].v);
+
+	p_poly_ft3->tpage = tpage;
+	p_poly_ft3->clut = clut;
+
+	gte_stszotz(&gte_result);
+	gte_result /= 3;
+
+	if( gte_result > 0 && gte_result < OT_LENGTH ) {
+		addPrim(ot[active_buffer] + otz, p_poly_ft3);
+	}
+
+	++p_poly_ft3;
 }
 
 void gfx_set_sprite(Sprite *spr) {
@@ -184,4 +563,49 @@ void gfx_set_stp(u_short stp) {
 
 	++p_dr_stp;
 	next_primitive = (char *)p_dr_stp;
+}
+
+static int _test_clip(short x, short y) {
+	int result = 0;
+
+	if( x < screen.x ) {
+		result |= CLIP_LEFT;
+	}
+
+	if( x >= (screen.x + (screen.w - 1)) ) {
+		result |= CLIP_RIGHT;
+	}
+
+	if( y < screen.y ) {
+		result |= CLIP_UP;
+	}
+
+	if( y >= (screen.y + (screen.h - 1)) ) {
+		result |= CLIP_DOWN;
+	}
+
+	return result;
+}
+
+static int _test_tri_clip(DVECTOR *v0, DVECTOR *v1, DVECTOR *v2) {
+	int c0, c1, c2;
+
+	c0 = _test_clip(v0->vx, v0->vy);
+	c1 = _test_clip(v1->vx, v1->vy);
+
+	if( (c0 & c1) == 0 ) {
+		return 0;
+	}
+
+	c2 = _test_clip(v2->vx, v2->vy);
+
+	if( (c1 & c2) == 0 ) {
+		return 0;
+	}
+
+	if( (c0 & c2) == 0 ) {
+		return 0;
+	}
+
+	return 1;
 }

@@ -11,8 +11,11 @@
 #define PORT_1 (0x00)
 #define PORT_2 (0x10)
 
-#define PAD_P1(I) pad_data[PLAYER_1].raw[(I)]
-#define PAD_P2(I) pad_data[PLAYER_2].raw[(I)]
+#define PAD_P1 (pad_data[PLAYER_1])
+#define PAD_P2 (pad_data[PLAYER_2])
+
+#define PAD_P1_RAW(I) (PAD_P1.raw[(I)])
+#define PAD_P2_RAW(I) (PAD_P2.raw[(I)])
 
 /* The buttons on a PS1 gamepad */
 typedef enum {
@@ -69,7 +72,7 @@ typedef union {
 		u_char circle : 1;
 		u_char cross : 1;
 		u_char square : 1;
-	} value;
+	};
 
 	u_char raw[34];
 } PadData;

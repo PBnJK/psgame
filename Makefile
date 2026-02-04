@@ -52,6 +52,7 @@ LDFLAGS += -lcd
 LDFLAGS += -Wl,--end-group
 
 SRCS := $(SRCDIR)/main.c
+SRCS += $(SRCDIR)/camera.c
 SRCS += $(SRCDIR)/cd.c
 SRCS += $(SRCDIR)/gfx.c
 SRCS += $(SRCDIR)/image.c
