@@ -13,6 +13,8 @@
 #include "sprite.h"
 
 void spr_load_from_image(TIM_IMAGE *tim, Sprite *spr) {
+	const u_char TIM_MODE = 2 - (tim->mode & 0x3);
+
 	spr->tpage = getTPage(tim->mode & 0x3, 0, tim->prect->x, tim->prect->y);
 
 	/* Does this TIM image have a CLUT? */
@@ -20,10 +22,10 @@ void spr_load_from_image(TIM_IMAGE *tim, Sprite *spr) {
 		spr->clut = getClut(tim->crect->x, tim->crect->y);
 	}
 
-	spr->w = tim->prect->w << (2 - (tim->mode & 0x3));
+	spr->w = tim->prect->w << TIM_MODE;
 	spr->h = tim->prect->h;
 
-	spr->u = (tim->prect->x & 0x3f) << (2 - (tim->mode & 0x3));
+	spr->u = (tim->prect->x & 0x3f) << TIM_MODE;
 	spr->v = tim->prect->y & 0xff;
 
 	spr->col.r = 128;

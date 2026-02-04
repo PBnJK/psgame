@@ -7,7 +7,7 @@
 #define LOG(...)
 #else
 #include <stdio.h>
-#define LOG(...) printf(__FILE__, __LINE__, "%s:%d: " __VA_ARGS__)
+#define LOG(...) printf(__VA_ARGS__)
 #endif
 
 typedef int bool;
