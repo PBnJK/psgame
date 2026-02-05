@@ -30,7 +30,7 @@ int main(void) {
 	_init();
 
 	text_init_font(&my_font, "\\FNT\\BIG;1", 10, 12);
-	gfx_load_model(&cube, "\\MDL\\CUBE;1", 0);
+	gfx_load_model(&cube, "\\MDL\\CUBE;1", "\\MDL\\CUBETEX;1");
 
 	while( true ) {
 		text_draw(&my_font, 32, 32, "Hello from PS1!");
@@ -65,6 +65,4 @@ static void _quit(void) {
 
 static void _update(void) {
 	cam_update(&camera);
-	LOG("T: %d %d %d\n", camera.trans.vx, camera.trans.vy, camera.trans.vz);
-	LOG("R: %d %d %d\n", camera.rot.vx, camera.rot.vy, camera.rot.vz);
 }

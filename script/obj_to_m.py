@@ -179,9 +179,9 @@ class Serializer:
         return int(v * 64.0)
 
     @staticmethod
-    def psx_color(c: float) -> int:
-        """Converts a color 'c' epxressed as floating-point into an integer"""
-        return int(c * 255.0)
+    def psx_uv(u: float) -> int:
+        """Converts a value 'v' expressed as floating-point into an integer"""
+        return int(u * 4096.0)
 
 
 class MeshSerializer(Serializer):
@@ -236,11 +236,9 @@ class MeshSerializer(Serializer):
 
         # Save UVs
         for uv in self.mesh.uvs:
-            for u in uv:
-                f.write(self.b(self.psx_vert(u), 1))
-
-        if uv_count % 2:
-            f.write(self.pad())
+            u, v = uv
+            f.write(self.b(self.psx_uv(u), 2))
+            f.write(self.b(4096 - self.psx_uv(v), 2))
 
         # Save face textures
         for texture in self.mesh.face_textures:

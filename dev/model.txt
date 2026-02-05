@@ -1,0 +1,173 @@
+(taken from my main PS1 project...)
+(I love writing spec sheets... Looked up the box-drawing characters on Wikipedia and everything...)
+(Most of this is speculative... I mean, I'd love if it worked like this, but it might change...)
+
+# 3D Models and Their Animations
+
+## 1. Models
+Models are divided into smaller Meshes, which are organized as a hierarchy. The
+model format can then be thought as a simple container for Meshes.
+
+0       8      16      24
+├───────┴───────┼───────┴───────┐
+│..mesh count...│....unused.....│
+├───────────────┴───────────────┤
+│.variable-length data (meshes).│ # See section [1.1. Mesh]
+└───────────────────────────────┘
+
+### 1.1. Mesh
+Meshes contain the actual geometry data.
+
+0       8      16      24
+├───────┴───────┼───────┴───────┐
+│.vertex count..│..face count...│
+├───────────────┼───────────────┤
+│.normal count..│...UV count....│
+├───────────────┼───────────────┤
+│..vertex 0.0...│..vertex 0.1...│ # Vertex data
+├───────────────┼───────────────┤ # XYZ positions representing vertices
+│..vertex 0.3...│..vertex 1.0...│ #
+├───────────────┼───────────────┤ # Unit Size....2 bytes (stored in threes)
+│..vertex 1.1...│..vertex 1.1...│ # Total Size...[vertex count]
+├───────────────┴───────────────┤
+│......rest of vertex data......│ # ==
+├───────────────┬───────────────┤
+│...face 0.0....│...face 0.1....│ # Face data
+├───────────────┼───────────────┤ # Indices pointing to vertices
+│...face 0.3....│...face 1.0....│ #
+├───────────────┼───────────────┤ # Unit Size....2 bytes (stored in threes)
+│...face 1.1....│...face 1.1....│ # Total Size...[face count]
+├───────────────┴───────────────┤
+│.......rest of face data.......│ # ==
+├───────────────┬───────────────┤
+│..normal 0.0...│..normal 0.1...│ # Normal data
+├───────────────┼───────────────┤ # XYZ data representing normals
+│..normal 0.3...│..normal 1.0...│ #
+├───────────────┼───────────────┤ # Unit Size....2 bytes (stored in threes)
+│..normal 1.1...│..normal 1.1...│ # Total Size...[normal count]
+├───────────────┴───────────────┤
+│......rest of normal data......│ # ==
+├───────────────┬───────────────┤
+│..nindex 0.0...│..nindex 0.1...│ # Normal Index data
+├───────────────┼───────────────┤ # Indices pointing to normals
+│..nindex 0.3...│..nindex 1.0...│ #
+├───────────────┼───────────────┤ # Unit Size....2 bytes (stored in threes)
+│..nindex 1.1...│..nindex 1.1...│ # Total Size...[face count]
+├───────────────┴───────────────┤
+│......rest of nindex data......│ # ==
+├───────┬───────┬───────┬───────┤
+│..u 0..│..v 0..│..u 1..│..v 1..│ # UV data
+├───────┼───────┼───────┼───────┤ # Pairs representing texture offsets within a face
+│..u 2..│..v 2..│..u 3..│..v 3..│ #
+├───────┴───────┴───────┴───────┤ # Unit Size....1 byte (stored in pairs)
+│........rest of UV data........│ # Total Size...[UV count]
+├───────────────┬───────────────┤
+│..texture 0.0..│..texture 0.1..│ # Texture Index data
+├───────────────┼───────────────┤ # Indices pointing to UVs
+│..texture 0.3..│..texture 1.0..│ #
+├───────────────┼───────────────┤ # Unit Size....2 bytes (stored in threes)
+│..texture 1.1..│..texture 1.1..│ # Total Size...[face count]
+├───────────────┴───────────────┤
+│.....rest of texture data......│ # ==
+├───────────────────────────────┤
+│.variable-length data (faces)..│ # See section [1.2. Face]
+└───────────────────────────────┘
+
+### 1.2. Face
+A face in a mesh.
+
+Only triangle faces are accepted. They may be of the following types:
+
+* Table 1.2.a.
+- 0x0: Flat-shaded untextured......(F3)
+- 0x1: Flat-shaded textured.......(FT3)
+- 0x2: Gouraud-shaded untextured...(G3)
+- 0x3: Gouraud-shaded textured....(GT3)
+
+Useful type properties:
+- (type & 0x1) tells if the type is textured
+- (type & 0x2) tells how the type is shaded (0 for flat, 1 for Gouraud)
+
+0       8      16      24
+├───────┼───────┼───────┼───────┐
+│...*...│..r0...│..g0...│..b0...│
+├───────┼───────┼───────┼───────┤
+│..r1...│..g1...│..b1...│..r2...│ # <
+├───────┼───────┼───────┴───────┤ # < Only present if Gouraud-shaded
+│..g2...│..b2...│....unused.....│ # <
+└───────┴───────┴───────────────┘
+* Face type; refer to [Table 1.2.a.]
+
+### 1.3. Note on Wavefront .OBJ files
+My converter in python creates .m files from .obj files, and, in this, makes a
+couple of assumptions, namely:
+1. That vertex colors are defined after the "v" values, in this manner:
+  v 1.0 0.0 1.0 1.0 0.5 1.0
+    │   │   │   └───┴───┴─ color
+    └───┴───┴─ vertex
+
+2. That face colors are defined using "vc", and later referenced by the "f"
+   directive, in this manner:
+  vc 1.0 0.5 1.0
+     │   │   └ Blue
+     │   └ Green
+     └ Red
+  ...
+  f 1/1/1/1 ...
+    │ │ │ └ Color Index
+    │ │ └ Normal index
+    │ └ UV index
+    └ Vertex Index
+
+  2.1. For convenience, the default color (128 128 128) is assumed to already be
+       defined (and indeed will be stored in the file) as index 1 (1-based), so
+	   there is no need to define it again in the .obj file. Consequently, color
+	   indices will start at 2 (1-based) in the .obj
+
+3. That the "s" directive is used to define Gouraud-shaded faces, in this manner:
+  s 1   # Turns on Gouraud-shading for the next faces
+  s off # Turns off Gouraud-shading for the next faces
+
+## 2. Animations
+Animations are stored using the following format:
+
+0       8      16      24
+├───────┴───────┼───────┴───────┤
+│..resolution*..│..frame count..│
+├───────────────┴───────────────┤
+│.variable-length data (frames).│ # See Section [2.1. Frame]
+└───────────────────────────────┘
+
+* The "resolution" refers to the FPS of the animation, stored as "ticks," where
+  a tick is 1/60th of a second
+
+## 2.1. Frame
+A frame is a snapshot of the animation in time
+
+Frames may be interpolated. The following interpolation types are available:
+
+* Table 2.1.a.
+- 0x0: None.........no interpolation is performed
+- 0x1: Linear.......linearly interpolates to next value
+- 0x2: Ease-in......Eases into the next value
+- 0x3: Ease-out.....Eases out of the current value
+- 0x4: Bézier.......Ease in-out using Bézier curve
+- 0x5: Parametric...Ease in-out using Parametric curve
+
+Frames may be of the following types:
+
+* Table 2.1.b.
+- 0x0: Translate...Translate (moves) the mesh to a given point
+- 0x1: Rotate......Rotates the mesh to a given point
+- 0x2: Scale.......Scales the mesh to a given point
+
+0       8      16      24
+├───────┴───────┼───────┴───────┤
+│.position tick.│..target mesh..│
+├───────┬───────┼───────────────┤
+│...*...│...+...│.......X.......│
+├───────┴───────┼───────────────┤
+│.......Y.......│.......Z.......│
+└───────────────┴───────────────┘
+* Interpolation type; refer to [Table 2.1.a.]
++ Frame type; refer to [Table 2.1.b.]

@@ -201,21 +201,18 @@ u_int gfx_load_model(Model *model, const char *FILENAME, const char *TEX) {
 }
 
 u_int gfx_load_model_from_ptr(Model *model, u_long *data, const char *TEX) {
-	u_int i, j, actual_w;
+	u_int i, j, tex_w;
 	u_long *data_start = data;
 	Mesh *mesh;
 
 	LOG("* LOADING MODEL...\n");
 
 	gfx_init_model(model);
-	gfx_load_model_texture(model, TEX, &actual_w);
+	gfx_load_model_texture(model, TEX, &tex_w);
 
 	model->mesh_count = *data++;
 
-	LOG("- mesh count: %d\n", model->mesh_count);
-
 	for( i = 0; i < model->mesh_count; ++i ) {
-		LOG(". * MESH #%d\n", i);
 		mesh = &model->meshes[i];
 
 		mesh->vertex_count = *data;
@@ -223,28 +220,16 @@ u_int gfx_load_model_from_ptr(Model *model, u_long *data, const char *TEX) {
 		mesh->normal_count = *data;
 		mesh->uv_count = (*data++) >> 16;
 
-		LOG(". - v count: %d\n", mesh->vertex_count);
-		LOG(". - f count: %d\n", mesh->face_count);
-		LOG(". - n count: %d\n", mesh->normal_count);
-		LOG(". - t count: %d\n", mesh->uv_count);
-
 		/* Load vertices */
-		LOG(". - VERTEX:\n");
 		for( j = 0; j < mesh->vertex_count; ++j ) {
 			mesh->verts[j].vx = *data;
 			mesh->verts[j].vy = (*data++) >> 16;
 			mesh->verts[j].vz = *data;
 
-			LOG(". . - %d %d %d:\n", mesh->verts[j].vx, mesh->verts[j].vy,
-				mesh->verts[j].vz);
-
 			if( ++j < mesh->vertex_count ) {
 				mesh->verts[j].vx = (*data++) >> 16;
 				mesh->verts[j].vy = *data;
 				mesh->verts[j].vz = (*data++) >> 16;
-
-				LOG(". . - %d %d %d:\n", mesh->verts[j].vx, mesh->verts[j].vy,
-					mesh->verts[j].vz);
 			}
 		}
 
@@ -259,16 +244,10 @@ u_int gfx_load_model_from_ptr(Model *model, u_long *data, const char *TEX) {
 			mesh->faces[j].vy = (*data++) >> 16;
 			mesh->faces[j].vz = *data;
 
-			LOG(". . - %d %d %d:\n", mesh->faces[j].vx, mesh->faces[j].vy,
-				mesh->faces[j].vz);
-
 			if( ++j < mesh->face_count ) {
 				mesh->faces[j].vx = (*data++) >> 16;
 				mesh->faces[j].vy = *data;
 				mesh->faces[j].vz = (*data++) >> 16;
-
-				LOG(". . - %d %d %d:\n", mesh->faces[j].vx, mesh->faces[j].vy,
-					mesh->faces[j].vz);
 			}
 		}
 
@@ -277,22 +256,15 @@ u_int gfx_load_model_from_ptr(Model *model, u_long *data, const char *TEX) {
 		}
 
 		/* Load normals */
-		LOG(". - NORMAL:\n");
 		for( j = 0; j < mesh->normal_count; ++j ) {
 			mesh->normals[j].vx = *data;
 			mesh->normals[j].vy = (*data++) >> 16;
 			mesh->normals[j].vz = *data;
 
-			LOG(". . - %d %d %d:\n", mesh->normals[j].vx, mesh->normals[j].vy,
-				mesh->normals[j].vz);
-
 			if( ++j < mesh->normal_count ) {
 				mesh->normals[j].vx = (*data++) >> 16;
 				mesh->normals[j].vy = *data;
 				mesh->normals[j].vz = (*data++) >> 16;
-
-				LOG(". . - %d %d %d:\n", mesh->normals[j].vx,
-					mesh->normals[j].vy, mesh->normals[j].vz);
 			}
 		}
 
@@ -301,22 +273,15 @@ u_int gfx_load_model_from_ptr(Model *model, u_long *data, const char *TEX) {
 		}
 
 		/* Load normal indices */
-		LOG(". - NIDX:\n");
 		for( j = 0; j < mesh->face_count; ++j ) {
 			mesh->nidxs[j].vx = *data;
 			mesh->nidxs[j].vy = (*data++) >> 16;
 			mesh->nidxs[j].vz = *data;
 
-			LOG(". . - %d %d %d:\n", mesh->nidxs[j].vx, mesh->nidxs[j].vy,
-				mesh->nidxs[j].vz);
-
 			if( ++j < mesh->face_count ) {
 				mesh->nidxs[j].vx = (*data++) >> 16;
 				mesh->nidxs[j].vy = *data;
 				mesh->nidxs[j].vz = (*data++) >> 16;
-
-				LOG(". . - %d %d %d:\n", mesh->nidxs[j].vx, mesh->nidxs[j].vy,
-					mesh->nidxs[j].vz);
 			}
 		}
 
@@ -325,42 +290,27 @@ u_int gfx_load_model_from_ptr(Model *model, u_long *data, const char *TEX) {
 		}
 
 		/* Load UVs */
-		LOG(". - UV:\n");
 		for( j = 0; j < mesh->uv_count; ++j ) {
-			mesh->uvs[j].u = *data;
-			mesh->uvs[j].v = (*data) >> 8;
+			u_short u, v;
+			u = *data;
+			v = (*data++) >> 16;
 
-			LOG(". . - %d %d:\n", mesh->uvs[j].u, mesh->uvs[j].v);
+			mesh->uvs[j].u = (tex_w * u) >> 12;
+			mesh->uvs[j].v = (model->tex.prect->h * v) >> 12;
 
-			if( ++j < mesh->uv_count ) {
-				mesh->uvs[j].u = (*data) >> 16;
-				mesh->uvs[j].v = (*data++) >> 24;
-
-				LOG(". . - %d %d:\n", mesh->uvs[j].u, mesh->uvs[j].v);
-			}
-		}
-
-		if( mesh->uv_count % 2 ) {
-			++data;
+			LOG("%d=%d, %d=%d\n", u, mesh->uvs[j].u, v, mesh->uvs[j].v);
 		}
 
 		/* Load texture indices */
-		LOG(". - UVIDX:\n");
 		for( j = 0; j < mesh->face_count; ++j ) {
 			mesh->uvidxs[j].vx = *data;
 			mesh->uvidxs[j].vy = (*data++) >> 16;
 			mesh->uvidxs[j].vz = *data;
 
-			LOG(". . - %d %d %d:\n", mesh->uvidxs[j].vx, mesh->uvidxs[j].vy,
-				mesh->uvidxs[j].vz);
-
 			if( ++j < mesh->face_count ) {
 				mesh->uvidxs[j].vx = (*data++) >> 16;
 				mesh->uvidxs[j].vy = *data;
 				mesh->uvidxs[j].vz = (*data++) >> 16;
-
-				LOG(". . - %d %d %d:\n", mesh->uvidxs[j].vx, mesh->uvidxs[j].vy,
-					mesh->uvidxs[j].vz);
 			}
 		}
 
@@ -374,7 +324,7 @@ u_int gfx_load_model_from_ptr(Model *model, u_long *data, const char *TEX) {
 
 void gfx_setup_texture(Model *model) {
 	RECT *prect = model->tex.prect;
-	RECT *crect = model->tex.prect;
+	RECT *crect = model->tex.crect;
 
 	model->tpage = getTPage(model->tex.mode & 0x3, 0, prect->x, prect->y);
 	model->clut = getClut(crect->x, crect->y);
@@ -386,6 +336,8 @@ void gfx_load_model_texture(Model *model, const char *TEX, u_int *width) {
 	}
 
 	image_load(TEX, &model->tex);
+	image_upload(&model->tex);
+
 	if( width ) {
 		*width = model->tex.prect->w;
 		switch( model->tex.mode & 0x3 ) {
@@ -419,7 +371,7 @@ void gfx_draw_model(Camera *camera, Model *model) {
 	gte_SetRotMatrix(&omtx);
 	gte_SetTransMatrix(&omtx);
 
-	p_poly_f3 = (POLY_F3 *)next_primitive;
+	p_poly_ft3 = (POLY_FT3 *)next_primitive;
 
 	for( i = 0; i < model->mesh_count; ++i ) {
 		mesh = &model->meshes[i];
@@ -445,11 +397,11 @@ void gfx_draw_model(Camera *camera, Model *model) {
 				continue;
 			}
 
-			gfx_set_poly_f3();
+			gfx_set_poly_ft3(mesh, j, model->tpage, model->clut);
 		}
 	}
 
-	next_primitive = (char *)p_poly_f3;
+	next_primitive = (char *)p_poly_ft3;
 
 	PopMatrix();
 }

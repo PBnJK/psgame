@@ -22,7 +22,7 @@
 #define MAX_NORMALS (MAX_NIDXS * 2)
 
 typedef struct _UV {
-	u_char u, v;
+	u_short u, v;
 } UV;
 
 typedef struct _Mesh {

@@ -1,5 +1,5 @@
 <tim_project>
-    <properties buffer_res="0" buffer_order="0"/>
+    <properties buffer_res="1" buffer_order="0"/>
     <tim_group name="global">
         <tim file="assets/font/serif.tim" source="assets/font/serif.png">
             <import_parameters>
@@ -12,6 +12,16 @@
             </import_parameters>
         </tim>
         <tim file="assets/font/big.tim" source="assets/font/big.png">
+            <import_parameters>
+                <target_bpp>4</target_bpp>
+                <dithering>0</dithering>
+                <quantize_mode>0</quantize_mode>
+                <set_color_stp>0</set_color_stp>
+                <set_black_stp>0</set_black_stp>
+                <transparency_mode>0</transparency_mode>
+            </import_parameters>
+        </tim>
+        <tim file="assets/model/cube/tex.tim" source="assets/model/cube/tex.png">
             <import_parameters>
                 <target_bpp>4</target_bpp>
                 <dithering>0</dithering>
