@@ -25,6 +25,18 @@ typedef struct _UV {
 	u_short u, v;
 } UV;
 
+typedef struct _Face {
+	u_char type;
+	union {
+		CVECTOR color;
+		struct {
+			CVECTOR c0;
+			CVECTOR c1;
+			CVECTOR c2;
+		};
+	};
+} Face;
+
 typedef struct _Mesh {
 	/* Vertex array */
 	u_short vertex_count;
@@ -43,6 +55,9 @@ typedef struct _Mesh {
 	u_short normal_count;
 	SVECTOR nidxs[MAX_NIDXS];
 	SVECTOR normals[MAX_NORMALS];
+
+	/* Type array */
+	Face face_data[MAX_FACES];
 } Mesh;
 
 typedef struct _Model {
@@ -87,7 +102,7 @@ void gfx_load_model_texture(Model *model, const char *TEX, u_int *width);
 void gfx_draw_model(Camera *camera, Model *model);
 
 /* Sets a POLY_F3 for rendering */
-void gfx_set_poly_f3(void);
+void gfx_set_poly_f3(Mesh *mesh, const u_int i);
 
 /* Sets a POLY_FT3 for rendering */
 void gfx_set_poly_ft3(Mesh *mesh, const u_int i, u_short tpage, u_short clut);

@@ -17,7 +17,7 @@
 #include "text.h"
 
 static Camera camera;
-static Model cube;
+static Model ico, cube;
 
 static void _init(void);
 static void _quit(void);
@@ -30,10 +30,18 @@ int main(void) {
 	_init();
 
 	text_init_font(&my_font, "\\FNT\\BIG;1", 10, 12);
+	gfx_load_model(&ico, "\\MDL\\ICO;1", 0);
 	gfx_load_model(&cube, "\\MDL\\CUBE;1", "\\MDL\\CUBETEX;1");
+
+	ico.trans.vz = 200;
+	ico.trans.vx = -100;
+
+	cube.trans.vx = 100;
+	cube.trans.vz = 200;
 
 	while( true ) {
 		text_draw(&my_font, 32, 32, "Hello from PS1!");
+		gfx_draw_model(&camera, &ico);
 		gfx_draw_model(&camera, &cube);
 		gfx_display();
 	}

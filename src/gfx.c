@@ -32,10 +32,16 @@
 #define DEBUG_COLOR_B (32)
 
 /* Clip bitmask */
-#define CLIP_LEFT 1
-#define CLIP_RIGHT 2
-#define CLIP_UP 4
-#define CLIP_DOWN 8
+#define CLIP_LEFT (1)
+#define CLIP_RIGHT (2)
+#define CLIP_UP (4)
+#define CLIP_DOWN (8)
+
+/* Face types */
+#define FACE_POLY_F3 (0)
+#define FACE_POLY_FT3 (1)
+#define FACE_POLY_G3 (2)
+#define FACE_POLY_GT3 (3)
 
 static DISPENV disp[2];
 static DRAWENV draw[2];
@@ -79,6 +85,8 @@ static int otz;
 /* Primitives */
 static POLY_F3 *p_poly_f3;
 static POLY_FT3 *p_poly_ft3;
+static POLY_G3 *p_poly_g3;
+static POLY_GT3 *p_poly_gt3;
 
 static SPRT *p_spr;
 
@@ -213,6 +221,8 @@ u_int gfx_load_model_from_ptr(Model *model, u_long *data, const char *TEX) {
 	model->mesh_count = *data++;
 
 	for( i = 0; i < model->mesh_count; ++i ) {
+		Face face;
+
 		mesh = &model->meshes[i];
 
 		mesh->vertex_count = *data;
@@ -238,7 +248,6 @@ u_int gfx_load_model_from_ptr(Model *model, u_long *data, const char *TEX) {
 		}
 
 		/* Load faces */
-		LOG(". - FACE:\n");
 		for( j = 0; j < mesh->face_count; ++j ) {
 			mesh->faces[j].vx = *data;
 			mesh->faces[j].vy = (*data++) >> 16;
@@ -297,8 +306,6 @@ u_int gfx_load_model_from_ptr(Model *model, u_long *data, const char *TEX) {
 
 			mesh->uvs[j].u = (tex_w * u) >> 12;
 			mesh->uvs[j].v = (model->tex.prect->h * v) >> 12;
-
-			LOG("%d=%d, %d=%d\n", u, mesh->uvs[j].u, v, mesh->uvs[j].v);
 		}
 
 		/* Load texture indices */
@@ -316,6 +323,34 @@ u_int gfx_load_model_from_ptr(Model *model, u_long *data, const char *TEX) {
 
 		if( mesh->face_count % 2 ) {
 			++data;
+		}
+
+		for( j = 0; j < mesh->face_count; ++j ) {
+			/* Load face types and colors */
+			face.type = *data;
+
+			/* Is Gouraud-shaded? */
+			if( face.type & 0x2 ) {
+				face.c0.r = (*data) >> 8;
+				face.c0.g = (*data) >> 16;
+				face.c0.b = (*data++) >> 24;
+
+				face.c1.r = *data;
+				face.c1.g = (*data) >> 8;
+				face.c1.b = (*data) >> 16;
+
+				face.c2.r = (*data++) >> 24;
+				face.c2.g = *data;
+				face.c2.b = (*data++) >> 8;
+			} else {
+				face.color.r = (*data) >> 8;
+				face.color.g = (*data) >> 16;
+				face.color.b = (*data++) >> 24;
+
+				LOG("%d %d %d\n", face.color.r, face.color.g, face.color.b);
+			}
+
+			mesh->face_data[j] = face;
 		}
 	}
 
@@ -371,12 +406,28 @@ void gfx_draw_model(Camera *camera, Model *model) {
 	gte_SetRotMatrix(&omtx);
 	gte_SetTransMatrix(&omtx);
 
-	p_poly_ft3 = (POLY_FT3 *)next_primitive;
-
 	for( i = 0; i < model->mesh_count; ++i ) {
 		mesh = &model->meshes[i];
 
 		for( j = 0; j < mesh->face_count; ++j ) {
+			Face face;
+			face = mesh->face_data[j];
+
+			switch( face.type ) {
+			case FACE_POLY_F3:
+				p_poly_f3 = (POLY_F3 *)next_primitive;
+				break;
+			case FACE_POLY_FT3:
+				p_poly_ft3 = (POLY_FT3 *)next_primitive;
+				break;
+			case FACE_POLY_G3:
+				p_poly_g3 = (POLY_G3 *)next_primitive;
+				break;
+			case FACE_POLY_GT3:
+				p_poly_gt3 = (POLY_GT3 *)next_primitive;
+				break;
+			}
+
 			gte_ldv3(&mesh->verts[mesh->faces[j].vx],
 				&mesh->verts[mesh->faces[j].vy],
 				&mesh->verts[mesh->faces[j].vz]);
@@ -397,16 +448,33 @@ void gfx_draw_model(Camera *camera, Model *model) {
 				continue;
 			}
 
-			gfx_set_poly_ft3(mesh, j, model->tpage, model->clut);
+			switch( face.type ) {
+			case FACE_POLY_F3:
+				gfx_set_poly_f3(mesh, j);
+				next_primitive = (char *)p_poly_f3;
+				break;
+			case FACE_POLY_FT3:
+				gfx_set_poly_ft3(mesh, j, model->tpage, model->clut);
+				next_primitive = (char *)p_poly_ft3;
+				break;
+			case FACE_POLY_G3:
+				// gfx_set_poly_g3();
+				next_primitive = (char *)p_poly_g3;
+				break;
+			case FACE_POLY_GT3:
+				// gfx_set_poly_gt3();
+				next_primitive = (char *)p_poly_gt3;
+				break;
+			}
 		}
 	}
-
-	next_primitive = (char *)p_poly_ft3;
 
 	PopMatrix();
 }
 
-void gfx_set_poly_f3(void) {
+void gfx_set_poly_f3(Mesh *mesh, const u_int i) {
+	const CVECTOR c = mesh->face_data[i].color;
+
 	setPolyF3(p_poly_f3);
 
 	gte_stsxy3(&p_poly_f3->x0, &p_poly_f3->x1, &p_poly_f3->x2);
@@ -415,7 +483,7 @@ void gfx_set_poly_f3(void) {
 		return;
 	}
 
-	setRGB0(p_poly_f3, 128, 128, 128);
+	setRGB0(p_poly_f3, c.r, c.g, c.b);
 
 	gte_stdp(&gte_result);
 	gte_stflg(&gte_result);
@@ -431,6 +499,8 @@ void gfx_set_poly_f3(void) {
 }
 
 void gfx_set_poly_ft3(Mesh *mesh, const u_int i, u_short tpage, u_short clut) {
+	const CVECTOR c = mesh->face_data[i].color;
+
 	setPolyFT3(p_poly_ft3);
 
 	gte_stsxy3(&p_poly_ft3->x0, &p_poly_ft3->x1, &p_poly_ft3->x2);
@@ -439,7 +509,7 @@ void gfx_set_poly_ft3(Mesh *mesh, const u_int i, u_short tpage, u_short clut) {
 		return;
 	}
 
-	setRGB0(p_poly_ft3, 128, 128, 128);
+	setRGB0(p_poly_ft3, c.r, c.g, c.b);
 
 	gte_ldrgb(&p_poly_ft3->r0);
 	gte_ldv0(&mesh->normals[mesh->nidxs[i].vx]);

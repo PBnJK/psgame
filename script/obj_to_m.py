@@ -23,14 +23,21 @@ class Mesh:
         self.vertices: list[tuple[float, float, float]] = []
         self.normals: list[tuple[float, float, float]] = []
         self.uvs: list[tuple[float, float]] = []
+        self.colors: list[tuple[float, float, float]] = []
 
         self.faces: list[tuple[int, int, int]] = []
         self.face_normals: list[tuple[int, int, int]] = []
         self.face_textures: list[tuple[int, int, int]] = []
+        self.face_types: list[int] = []
+        self.face_colors: list[tuple[int, int, int]] = []
 
     def add_vertex(self, x: float, y: float, z: float) -> None:
         """Adds a vertex to the mesh, as a point in 3D space"""
         self.vertices.append((x, y, z))
+
+    def add_color(self, r: float, g: float, b: float) -> None:
+        """Adds a vertex to the mesh, as a point in 3D space"""
+        self.colors.append((r, g, b))
 
     def add_normal(self, x: float, y: float, z: float) -> None:
         """Adds a normal to the mesh, as a vector in 3D space"""
@@ -52,6 +59,17 @@ class Mesh:
         """Adds a face texture to the mesh, as indices to the UV array"""
         self.face_textures.append((i0, i1, i2))
 
+    def add_face_type(
+        self, is_gouraud_shaded: bool, is_textured: bool, color: tuple[int, int, int]
+    ) -> None:
+        """Adds a face type to the face array"""
+        gouraud_type: int = int(is_gouraud_shaded) << 1
+        textured_type: int = int(is_textured)
+
+        face_type: int = gouraud_type | textured_type
+        self.face_types.append(face_type)
+        self.face_colors.append(color)
+
     def get_vertex_count(self) -> int:
         """Returns the number of vertices in the mesh"""
         return len(self.vertices)
@@ -67,6 +85,10 @@ class Mesh:
     def get_uv_count(self) -> int:
         """Returns the number of UVs in the mesh"""
         return len(self.uvs)
+
+    def get_color_count(self) -> int:
+        """Returns the number of colors in the mesh"""
+        return len(self.colors)
 
     def parse_face(self, f0: str, f1: str, f2: str) -> None:
         i0, vt0, vn0 = self.__parse_face_component(f0)
@@ -109,6 +131,10 @@ class Model:
         self.__mesh: Mesh
         self.meshes: list[Mesh] = []
 
+        self.solid_color: tuple[int, int, int] = (128, 128, 128)
+        self.gouraud_shaded: bool = False
+        self.textured: bool = False
+
     def add_mesh(self, mesh: Mesh) -> None:
         """Adds a mesh to the model"""
         self.meshes.append(mesh)
@@ -139,13 +165,20 @@ class Model:
                         self.add_uv(*uv)
                     case "f":
                         self.add_face(*args)
+                    case "s":
+                        self.parse_s(args[0])
+                    case "usemtl":
+                        self.parse_mtl(args[0])
 
     def begin_mesh(self) -> None:
         self.__mesh: Mesh = Mesh()
         self.meshes.append(self.__mesh)
 
-    def add_vertex(self, v0: float, v1: float, v2: float) -> None:
+    def add_vertex(
+        self, v0: float, v1: float, v2: float, c0: float, c1: float, c2: float
+    ) -> None:
         self.__mesh.add_vertex(v0, v1, v2)
+        self.__mesh.add_color(c0, c1, c2)
 
     def add_vertex_normal(self, vn0: float, vn1: float, vn2: float) -> None:
         self.__mesh.add_normal(vn0, vn1, vn2)
@@ -155,6 +188,22 @@ class Model:
 
     def add_face(self, f0: str, f1: str, f2: str) -> None:
         self.__mesh.parse_face(f0, f1, f2)
+        self.__mesh.add_face_type(self.gouraud_shaded, self.textured, self.solid_color)
+
+    def parse_s(self, s: str) -> None:
+        self.gouraud_shaded = s != "0"
+
+    def parse_mtl(self, mtl: str) -> None:
+        self.textured = mtl.startswith("tex")
+        if mtl.startswith("#"):
+            self.solid_color = self.parse_solid_color(mtl)
+
+    def parse_solid_color(self, color: str) -> tuple[int, int, int]:
+        r = int(color[1:3], 16)
+        g = int(color[3:5], 16)
+        b = int(color[5:7], 16)
+
+        return (r, g, b)
 
     def save(self, filename: Path) -> None:
         """Saves the model to a file"""
@@ -169,14 +218,19 @@ class Serializer:
         return (0).to_bytes(sz)
 
     @staticmethod
-    def b(b: int, sz: int = 2) -> bytes:
+    def b(b: int, sz: int = 2, signed: bool = True) -> bytes:
         """Turns an integer 'b' into 'sz' bytes"""
-        return b.to_bytes(sz, byteorder="little", signed=True)
+        return b.to_bytes(sz, byteorder="little", signed=signed)
 
     @staticmethod
     def psx_vert(v: float) -> int:
         """Converts a vertex 'v' expressed as floating-point into an integer"""
         return int(v * 64.0)
+
+    @staticmethod
+    def psx_color(c: float) -> int:
+        """Converts a color 'c' expressed as floating-point into an integer"""
+        return int(c * 255.0)
 
     @staticmethod
     def psx_uv(u: float) -> int:
@@ -247,6 +301,33 @@ class MeshSerializer(Serializer):
 
         if face_count % 2:
             f.write(self.pad())
+
+        # Save face data
+        for i in range(face_count):
+            face_type: int = self.mesh.face_types[i]
+            f.write(self.b(face_type, 1))
+
+            f0, f1, f2 = self.mesh.faces[i]
+
+            # Gouraud-shaded
+            if face_type & 0x2:
+                self.write_face_color(f, f0)
+                self.write_face_color(f, f1)
+                self.write_face_color(f, f2)
+                f.write(self.pad())
+
+            # Flat-shaded
+            else:
+                for c in self.mesh.face_colors[i]:
+                    f.write(self.b(c, 1, False))
+
+    def join_color(self, colors: tuple[float, float, float]) -> int:
+        r, g, b = map(self.psx_color, colors)
+        return r | (g << 8) | (b << 16)
+
+    def write_face_color(self, f, idx: int) -> None:
+        for c in map(self.psx_color, self.mesh.colors[idx]):
+            f.write(self.b(c, 1, False))
 
 
 class ModelSerializer(Serializer):

@@ -106,27 +106,7 @@ couple of assumptions, namely:
     │   │   │   └───┴───┴─ color
     └───┴───┴─ vertex
 
-2. That face colors are defined using "vc", and later referenced by the "f"
-   directive, in this manner:
-  vc 1.0 0.5 1.0
-     │   │   └ Blue
-     │   └ Green
-     └ Red
-  ...
-  f 1/1/1/1 ...
-    │ │ │ └ Color Index
-    │ │ └ Normal index
-    │ └ UV index
-    └ Vertex Index
-
-  2.1. For convenience, the default color (128 128 128) is assumed to already be
-       defined (and indeed will be stored in the file) as index 1 (1-based), so
-	   there is no need to define it again in the .obj file. Consequently, color
-	   indices will start at 2 (1-based) in the .obj
-
-3. That the "s" directive is used to define Gouraud-shaded faces, in this manner:
-  s 1   # Turns on Gouraud-shading for the next faces
-  s off # Turns off Gouraud-shading for the next faces
+2. TODO?
 
 ## 2. Animations
 Animations are stored using the following format:
@@ -171,3 +151,14 @@ Frames may be of the following types:
 └───────────────┴───────────────┘
 * Interpolation type; refer to [Table 2.1.a.]
 + Frame type; refer to [Table 2.1.b.]
+
+# A. RGB888 to RGB565
+(if I figure this is the better way to go about it after all)
+
+r8, g8, b8 = map(self.psx_color, self.mesh.colors[i])
+r5: int = ((r8 >> 3) << 11) & 0xF800
+g6: int = ((g8 >> 2) << 5) & 0x07E0
+b5: int = (b8 >> 3) & 0x001F
+
+color: int = r5 | g6 | b5
+f.write(self.b(color, 2, False))
