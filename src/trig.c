@@ -1,8 +1,7 @@
 /* psgame
  * Trigonometry
- */
-
-/* Based on:
+ *
+ * Based on:
  *   https://www.coranac.com/2009/07/sines
  *   https://github.com/spicyjpeg/ps1-bare-metal/blob/main/src/08_spinningCube/trig.c
  */

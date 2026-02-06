@@ -19,9 +19,6 @@
 
 #include "gfx.h"
 
-/* Location in memory that holds a special region-dependent character */
-#define REGION_ADDR (*(char *)0xBFC7FF52)
-
 #define OT_PRECISION (11)
 #define OT_LENGTH (1 << OT_PRECISION)
 

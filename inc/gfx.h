@@ -6,9 +6,11 @@
 #include <libgte.h>
 #include <libgpu.h>
 
-#include "camera.h"
 #include "sprite.h"
 #include "text.h"
+
+/* Location in memory that holds a special region-dependent character */
+#define REGION_ADDR (*(char *)0xBFC7FF52)
 
 #define MAX_MESHES (32)
 

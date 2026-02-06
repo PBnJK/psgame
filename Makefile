@@ -60,8 +60,10 @@ SRCS += $(SRCDIR)/gfx.c
 SRCS += $(SRCDIR)/image.c
 SRCS += $(SRCDIR)/input.c
 SRCS += $(SRCDIR)/mem.c
+SRCS += $(SRCDIR)/modplayer.c
 SRCS += $(SRCDIR)/player.c
 SRCS += $(SRCDIR)/sprite.c
+SRCS += $(SRCDIR)/spu.c
 SRCS += $(SRCDIR)/text.c
 SRCS += $(SRCDIR)/trig.c
 
