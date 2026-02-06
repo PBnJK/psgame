@@ -99,7 +99,7 @@ void gfx_setup_texture(Model *model);
 void gfx_load_model_texture(Model *model, const char *TEX, u_int *width);
 
 /* Draws a texture */
-void gfx_draw_model(Camera *camera, Model *model);
+void gfx_draw_model(Model *model);
 
 /* Sets a POLY_F3 for rendering */
 void gfx_set_poly_f3(Mesh *mesh, const u_int i);

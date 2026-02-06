@@ -14,6 +14,7 @@
 
 #include "common.h"
 #include "image.h"
+#include "game.h"
 #include "mem.h"
 
 #include "gfx.h"
@@ -28,8 +29,8 @@
 
 /* Debug background colors */
 #define DEBUG_COLOR_R (32)
-#define DEBUG_COLOR_G (128)
-#define DEBUG_COLOR_B (32)
+#define DEBUG_COLOR_G (32)
+#define DEBUG_COLOR_B (96)
 
 /* Clip bitmask */
 #define CLIP_LEFT (1)
@@ -92,6 +93,9 @@ static SPRT *p_spr;
 
 static DR_TPAGE *p_dr_tpage;
 static DR_STP *p_dr_stp;
+
+/* Prepares a mesh for drawing */
+static inline int _prepare_mesh(Mesh *mesh, u_int i);
 
 /* Tests if a vertex is within the bounds of the screen */
 static int _test_clip(short x, short y);
@@ -387,7 +391,7 @@ void gfx_load_model_texture(Model *model, const char *TEX, u_int *width) {
 	gfx_setup_texture(model);
 }
 
-void gfx_draw_model(Camera *camera, Model *model) {
+void gfx_draw_model(Model *model) {
 	MATRIX omtx, lmtx;
 	u_int i, j;
 	Mesh *mesh;
@@ -401,7 +405,7 @@ void gfx_draw_model(Camera *camera, Model *model) {
 	MulMatrix0(&light_matrix, &omtx, &lmtx);
 	gte_SetLightMatrix(&lmtx);
 
-	CompMatrixLV(&camera->mat, &omtx, &omtx);
+	CompMatrixLV(&camera.mat, &omtx, &omtx);
 
 	gte_SetRotMatrix(&omtx);
 	gte_SetTransMatrix(&omtx);
@@ -416,60 +420,54 @@ void gfx_draw_model(Camera *camera, Model *model) {
 			switch( face.type ) {
 			case FACE_POLY_F3:
 				p_poly_f3 = (POLY_F3 *)next_primitive;
+				if( _prepare_mesh(mesh, j) ) {
+					gfx_set_poly_f3(mesh, j);
+					next_primitive = (char *)p_poly_f3;
+				}
 				break;
 			case FACE_POLY_FT3:
 				p_poly_ft3 = (POLY_FT3 *)next_primitive;
+				if( _prepare_mesh(mesh, j) ) {
+					gfx_set_poly_ft3(mesh, j, model->tpage, model->clut);
+					next_primitive = (char *)p_poly_ft3;
+				}
 				break;
 			case FACE_POLY_G3:
 				p_poly_g3 = (POLY_G3 *)next_primitive;
+				if( _prepare_mesh(mesh, j) ) { }
 				break;
 			case FACE_POLY_GT3:
 				p_poly_gt3 = (POLY_GT3 *)next_primitive;
-				break;
-			}
-
-			gte_ldv3(&mesh->verts[mesh->faces[j].vx],
-				&mesh->verts[mesh->faces[j].vy],
-				&mesh->verts[mesh->faces[j].vz]);
-
-			gte_rtpt();
-
-			gte_nclip();
-			gte_stopz(&gte_result);
-			if( gte_result > 0 ) {
-				continue;
-			}
-
-			gte_avsz3();
-			gte_stotz(&otz);
-
-			otz >>= 2;
-			if( otz <= 5 || otz >= OT_LENGTH ) {
-				continue;
-			}
-
-			switch( face.type ) {
-			case FACE_POLY_F3:
-				gfx_set_poly_f3(mesh, j);
-				next_primitive = (char *)p_poly_f3;
-				break;
-			case FACE_POLY_FT3:
-				gfx_set_poly_ft3(mesh, j, model->tpage, model->clut);
-				next_primitive = (char *)p_poly_ft3;
-				break;
-			case FACE_POLY_G3:
-				// gfx_set_poly_g3();
-				next_primitive = (char *)p_poly_g3;
-				break;
-			case FACE_POLY_GT3:
-				// gfx_set_poly_gt3();
-				next_primitive = (char *)p_poly_gt3;
+				if( _prepare_mesh(mesh, j) ) { }
 				break;
 			}
 		}
 	}
 
 	PopMatrix();
+}
+
+static inline int _prepare_mesh(Mesh *mesh, u_int i) {
+	gte_ldv3(&mesh->verts[mesh->faces[i].vx], &mesh->verts[mesh->faces[i].vy],
+		&mesh->verts[mesh->faces[i].vz]);
+
+	gte_rtpt();
+
+	gte_nclip();
+	gte_stopz(&gte_result);
+	if( gte_result > 0 ) {
+		return 0;
+	}
+
+	gte_avsz3();
+	gte_stotz(&otz);
+
+	otz >>= 2;
+	if( otz <= 5 || otz >= OT_LENGTH ) {
+		return 0;
+	}
+
+	return 1;
 }
 
 void gfx_set_poly_f3(Mesh *mesh, const u_int i) {

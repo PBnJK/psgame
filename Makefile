@@ -52,14 +52,18 @@ LDFLAGS += -lcd
 LDFLAGS += -Wl,--end-group
 
 SRCS := $(SRCDIR)/main.c
+SRCS += $(SRCDIR)/actor.c
 SRCS += $(SRCDIR)/camera.c
 SRCS += $(SRCDIR)/cd.c
+SRCS += $(SRCDIR)/game.c
 SRCS += $(SRCDIR)/gfx.c
 SRCS += $(SRCDIR)/image.c
 SRCS += $(SRCDIR)/input.c
 SRCS += $(SRCDIR)/mem.c
+SRCS += $(SRCDIR)/player.c
 SRCS += $(SRCDIR)/sprite.c
 SRCS += $(SRCDIR)/text.c
+SRCS += $(SRCDIR)/trig.c
 
 SRCS += $(CURRDIR)nugget/common/crt0/crt0.s
 SRCS += $(CURRDIR)nugget/common/syscalls/printf.s

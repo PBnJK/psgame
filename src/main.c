@@ -2,48 +2,37 @@
  * Entry-point
  */
 
-#include <stdio.h>
 #include <sys/types.h>
 
 #include <libetc.h>
 
-#include "camera.h"
 #include "common.h"
 
 #include "cd.h"
+#include "game.h"
 #include "gfx.h"
 #include "input.h"
 #include "mem.h"
+#include "player.h"
 #include "text.h"
 
-static Camera camera;
-static Model ico, cube;
+static Font my_font;
+static Model ico;
+static Player player;
 
 static void _init(void);
 static void _quit(void);
 
+static void _display(void);
 static void _update(void);
 
 int main(void) {
-	Font my_font;
-
 	_init();
 
-	text_init_font(&my_font, "\\FNT\\BIG;1", 10, 12);
-	gfx_load_model(&ico, "\\MDL\\ICO;1", 0);
-	gfx_load_model(&cube, "\\MDL\\CUBE;1", "\\MDL\\CUBETEX;1");
-
 	ico.trans.vz = 200;
-	ico.trans.vx = -100;
-
-	cube.trans.vx = 100;
-	cube.trans.vz = 200;
 
 	while( true ) {
-		text_draw(&my_font, 32, 32, "Hello from PS1!");
-		gfx_draw_model(&camera, &ico);
-		gfx_draw_model(&camera, &cube);
-		gfx_display();
+		_display();
 	}
 
 	_quit();
@@ -59,8 +48,12 @@ static void _init(void) {
 	mem_init();
 	input_init();
 	gfx_init();
+	player_init(&player);
 
 	VSyncCallback(_update);
+
+	text_init_font(&my_font, "\\FNT\\BIG;1", 10, 12);
+	gfx_load_model(&ico, "\\MDL\\ICO;1", 0);
 }
 
 static void _quit(void) {
@@ -71,6 +64,14 @@ static void _quit(void) {
 	StopCallback();
 }
 
+static void _display(void) {
+	player_display(&player);
+	text_draw(&my_font, 0, 0, "DEMO");
+	gfx_draw_model(&ico);
+	gfx_display();
+}
+
 static void _update(void) {
-	cam_update(&camera);
+	player_update(&player);
+	game_update();
 }
