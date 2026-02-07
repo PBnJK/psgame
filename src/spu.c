@@ -69,6 +69,11 @@ void spu_unmute(void) {
 	SPU_CTRL = 0xc000;
 }
 
+void spu_key_on(u_int voice_bits) {
+	SPU_KEY_ON_LOW = voice_bits;
+	SPU_KEY_ON_HIGH = voice_bits >> 16;
+}
+
 void spu_set_voice_volume(u_int id, u_int left, u_int right) {
 	SPU_VOICES[id].volume_left = (left * spu_master_volume) >> 16;
 	SPU_VOICES[id].volume_right = (right * spu_master_volume) >> 16;
@@ -76,6 +81,10 @@ void spu_set_voice_volume(u_int id, u_int left, u_int right) {
 
 void spu_set_voice_sample_rate(u_int id, u_short sample_rate) {
 	SPU_VOICES[id].sample_rate = sample_rate;
+}
+
+void spu_set_voice_sample_start_addr(u_int id, u_short sample_start_addr) {
+	SPU_VOICES[id].sample_start_addr = sample_start_addr >> 3;
 }
 
 void spu_reset_voice(u_int id) {
@@ -87,4 +96,12 @@ void spu_reset_voice(u_int id) {
 	SPU_VOICES[id].sr = 0;
 	SPU_VOICES[id].current_volume = 0;
 	SPU_VOICES[id].sample_repeat_addr = 0;
+}
+
+void spu_wait_idle(void) {
+	do {
+		for( u_int i = 0; i < 2045; ++i ) {
+			__asm__ volatile("");
+		}
+	} while( (SPU_STATUS & 0x07ff) != 0 );
 }

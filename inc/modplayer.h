@@ -27,10 +27,10 @@ typedef struct _MODFileFormat {
 	u_char signature[4];
 } MODFileFormat;
 
-/* Loads the module and readies it for playback
- * Note that the pointer must be aligned to a 4-byte boundary
- *
+/* Loads the module and readies it for playback*
  * Returns the number of bytes needed if relocation is desired
+ *
+ * NOTE: the pointer must be aligned to a 4-byte boundary
  */
 u_int mod_load(MODFileFormat *module);
 
@@ -43,9 +43,18 @@ u_int mod_load(MODFileFormat *module);
  */
 u_int mod_load_with_smp(MODFileFormat *module, const u_char *sample_data);
 
+/* Relocates the module to a new buffer
+ *
+ * NOTE: caller is responsible for managing  memory
+ */
+void mod_relocate(u_char *buffer);
+
 /* Returns the number of channels in this module
  * Returns 0 if the module is invalid
  */
 u_int mod_check_channel_count(MODFileFormat *module);
+
+/* Resets the SPU and silences everything */
+void mod_silence(void);
 
 #endif // !GUARD_PSGAME_MODPLAYER_H_

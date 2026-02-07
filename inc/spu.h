@@ -62,13 +62,22 @@ void spu_mute(void);
 /* Unmutes the SPU */
 void spu_unmute(void);
 
+/* Key on */
+void spu_key_on(u_int voice_bits);
+
 /* Sets the volume of the voice with the given ID */
 void spu_set_voice_volume(u_int id, u_int left, u_int right);
 
 /* Sets the sample rate of the voice with the given ID */
 void spu_set_voice_sample_rate(u_int id, u_short sample_rate);
 
+/* Sets the sample start adress of the voice with the given ID */
+void spu_set_voice_sample_start_addr(u_int id, u_short sample_start_addr);
+
 /* Resest the voice on the SPU with the given ID */
 void spu_reset_voice(u_int id);
+
+/* Waits until the SPU is idle */
+void spu_wait_idle(void);
 
 #endif // !GUARD_PSGAME_SPU_H_
