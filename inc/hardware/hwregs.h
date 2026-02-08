@@ -1,11 +1,13 @@
-#ifndef GUARD_PSGAME_HWREGS_H_
-#define GUARD_PSGAME_HWREGS_H_
+#ifndef GUARD_PSGAME_HARDWARE_HWREGS_H_
+#define GUARD_PSGAME_HARDWARE_HWREGS_H_
 
 /* Adapted from the psyqo engine (MIT)
  *
  * Original source:
  *   https://github.com/grumpycoders/pcsx-redux/blob/main/src/mips/common/hardware/hwregs.h
  */
+
+#include <sys/types.h>
 
 #define HW_U8(x) (*(volatile u_char *)(x))
 #define HW_U16(x) (*(volatile u_short *)(x))
@@ -39,4 +41,4 @@
 
 #define POST HW_U8(0xbf802041)
 
-#endif // !GUARD_PSGAME_HWREGS_H_
+#endif // !GUARD_PSGAME_HARDWARE_HWREGS_H_

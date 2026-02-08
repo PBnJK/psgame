@@ -27,6 +27,15 @@ typedef struct _MODFileFormat {
 	u_char signature[4];
 } MODFileFormat;
 
+extern u_int mod_hblanks;
+
+extern u_int mod_current_row;
+extern u_int mod_current_order;
+extern u_int mod_current_pattern;
+
+extern u_int mod_channels;
+extern u_int mod_song_length;
+
 /* Loads the module and readies it for playback*
  * Returns the number of bytes needed if relocation is desired
  *
@@ -48,6 +57,23 @@ u_int mod_load_with_smp(MODFileFormat *module, const u_char *sample_data);
  * NOTE: caller is responsible for managing  memory
  */
 void mod_relocate(u_char *buffer);
+
+/* Call this function periodically to play sound */
+void mod_poll(void);
+
+/* Plays a single, arbitrary note
+ *
+ * channel is a channel ID between 0-23 (ideally above _channels)
+ * sample_id is the ID of a sample in the MOD sample bank
+ * note is a value between 0-35 (36 notes for 3 octaves)
+ * volume is a value between 0-63
+ */
+void mod_play_note(u_int channel, u_int sample_id, u_int note, short volume);
+
+/* Plays a sound effect
+ * Unlike mod_play_note, the volume won't be affected by the global volume
+ */
+void mod_play_sfx(u_int channel, u_int sample_id, u_int note, short volume);
 
 /* Returns the number of channels in this module
  * Returns 0 if the module is invalid

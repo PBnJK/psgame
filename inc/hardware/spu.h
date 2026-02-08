@@ -1,5 +1,5 @@
-#ifndef GUARD_PSGAME_SPU_H_
-#define GUARD_PSGAME_SPU_H_
+#ifndef GUARD_PSGAME_HARDWARE_SPU_H_
+#define GUARD_PSGAME_HARDWARE_SPU_H_
 
 /* Adapted from the psyqo engine (MIT)
  *
@@ -80,4 +80,4 @@ void spu_reset_voice(u_int id);
 /* Waits until the SPU is idle */
 void spu_wait_idle(void);
 
-#endif // !GUARD_PSGAME_SPU_H_
+#endif // !GUARD_PSGAME_HARDWARE_SPU_H_

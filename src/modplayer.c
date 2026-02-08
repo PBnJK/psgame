@@ -18,8 +18,9 @@
 #include "common.h"
 
 #include "gfx.h"
-#include "hwregs.h"
-#include "spu.h"
+
+#include "hardware/hwregs.h"
+#include "hardware/spu.h"
 
 #include "modplayer.h"
 
@@ -31,8 +32,13 @@
 #define FX_VOLUME_SLIDE_GLISSANDO (5)
 #define FX_VOLUME_SLIDE_VIBRATO (6)
 #define FX_TREMOLO (7)
+#define FX_SAMPLE_JUMP (9)
 #define FX_VOLUME_SLIDE (0xa)
+#define FX_ORDER_JUMP (0xb)
+#define FX_SET_VOLUME (0xc)
+#define FX_PATTERN_BREAK (0xd)
 #define FX_EXTENDED (0xe)
+#define FX_SET_SPEED (0xf)
 
 typedef struct _SPUChannelData {
 	u_short note;
@@ -40,7 +46,7 @@ typedef struct _SPUChannelData {
 	u_short slide_to;
 	u_char slide_speed;
 	u_char volume;
-	u_char sampleID;
+	u_char sample_id;
 	char vibrato;
 	u_char fx[4];
 	u_short sample_pos;
@@ -120,21 +126,15 @@ const u_short PERIOD_TABLE[36 * 16] = {
 
 /* clang-format on */
 
-static u_int _channels = 0;
-static u_int _song_length = 0;
-
 static const u_char *_module_data = 0;
-static u_int _current_order = 0;
-static u_int _current_pattern = 0;
-static u_int _current_row = 0;
 static u_int _speed = 0;
 static u_int _tick = 0;
 static u_int _bpm = 0;
 
 static const u_char *_row_pointer = 0;
-static int _change_row_next_tick = 0;
+static bool _change_row_next_tick = 0;
 static u_int _next_row = 0;
-static int _change_order_next_tick = 0;
+static bool _change_order_next_tick = 0;
 static u_int _next_order = 0;
 static u_char _pattern_delay = 0;
 
@@ -142,7 +142,6 @@ static u_int _loop_start = 0;
 static u_int _loop_count = 0;
 
 static int _stereo = 0;
-static u_int _hblanks;
 
 /* Loads a MOD file */
 static u_int _load_internal(MODFileFormat *module, const u_char *sample_data);
@@ -178,11 +177,23 @@ static inline void _do_tremolo_effect(SPUChannelData *const data, u_int id);
 static inline void _do_volume_slide_effect(
 	SPUChannelData *const data, u_int id, u_char fx23);
 
+/* Processes rows */
+static void _update_row(void);
+
 /* Short-hand for setting the volume on an SPU voice */
 static inline void _set_voice_volume(u_int id, u_int volume);
 
 /* Short-hand for setting the sample rate on an SPU voice with a period */
 static inline void _set_voice_sample_rate(u_int id, u_int period);
+
+u_int mod_hblanks;
+
+u_int mod_current_row = 0;
+u_int mod_current_order = 0;
+u_int mod_current_pattern = 0;
+
+u_int mod_channels = 0;
+u_int mod_song_length = 0;
 
 u_int mod_load(MODFileFormat *module) {
 	return _load_internal(module, 0);
@@ -190,7 +201,7 @@ u_int mod_load(MODFileFormat *module) {
 
 u_int mod_load_with_smp(MODFileFormat *module, const u_char *sample_data) {
 	_load_internal(module, sample_data ? sample_data : (const u_char *)-1);
-	return _channels;
+	return mod_channels;
 }
 
 void mod_relocate(u_char *buffer) {
@@ -207,7 +218,7 @@ void mod_relocate(u_char *buffer) {
 		}
 	}
 
-	size = 132 + _channels * 0x100 * (max_pattern_id + 1);
+	size = 132 + mod_channels * 0x100 * (max_pattern_id + 1);
 	const u_char *old_buffer = _module_data;
 
 	if( buffer < old_buffer ) {
@@ -224,6 +235,72 @@ void mod_relocate(u_char *buffer) {
 	}
 
 	_module_data = buffer;
+}
+
+void mod_poll(void) {
+	u_char new_pattern_delay = _pattern_delay;
+
+	if( ++_tick < _speed ) {
+		_update_effect();
+	} else {
+		_tick = 0;
+		if( new_pattern_delay-- == 0 ) {
+			_update_row();
+			new_pattern_delay = _pattern_delay;
+
+			if( ++mod_current_row >= 64 || _change_row_next_tick ) {
+				mod_current_row = 0;
+				if( ++mod_current_order >= mod_song_length ) {
+					mod_current_order = 0;
+				}
+
+				mod_current_pattern = _module_data[mod_current_order];
+			}
+		} else {
+			_update_effect();
+		}
+	}
+
+	_pattern_delay = new_pattern_delay;
+}
+
+void mod_play_note(u_int channel, u_int sample_id, u_int note, short volume) {
+	u_short start_addr;
+	int new_period;
+	SPUChannelData *const data = &_spu_channel_data[channel];
+	SPUInstrumentData *const instrument = &_spu_instrument_data[sample_id];
+
+	if( volume < 0 ) {
+		volume = 0;
+	}
+
+	if( volume > 63 ) {
+		volume = 63;
+	}
+
+	data->sample_pos = 0;
+	spu_set_voice_volume(channel, volume << 8, volume << 8);
+
+	start_addr = (instrument->base_address << 4) + data->sample_pos;
+	spu_set_voice_sample_start_addr(channel, start_addr);
+
+	spu_wait_idle();
+	spu_key_on(1 << channel);
+
+	data->note = note = note + instrument->fine_tune * 36;
+
+	new_period = data->period = PERIOD_TABLE[note];
+	_set_voice_sample_rate(channel, new_period);
+}
+
+void mod_play_sfx(u_int channel, u_int sample_id, u_int note, short volume) {
+	u_int prev_volume;
+
+	prev_volume = spu_master_volume;
+	spu_master_volume = 16384;
+
+	mod_play_note(channel, sample_id, note, volume);
+	spu_master_volume = prev_volume;
 }
 
 u_int mod_check_channel_count(MODFileFormat *module) {
@@ -255,9 +332,9 @@ static u_int _load_internal(MODFileFormat *module, const u_char *sample_data) {
 	u_int max_pattern_id = 0;
 
 	spu_init();
-	_channels = mod_check_channel_count(module);
+	mod_channels = mod_check_channel_count(module);
 
-	if( _channels == 0 ) {
+	if( mod_channels == 0 ) {
 		return 0;
 	}
 
@@ -269,7 +346,7 @@ static u_int _load_internal(MODFileFormat *module, const u_char *sample_data) {
 		current_spu_address += sample->lenarr[0] * 0x100 + sample->lenarr[1];
 	}
 
-	_song_length = module->song_length;
+	mod_song_length = module->song_length;
 	for( i = 0; i < 128; ++i ) {
 		if( max_pattern_id < module->pattern_table[i] ) {
 			max_pattern_id = module->pattern_table[i];
@@ -277,7 +354,7 @@ static u_int _load_internal(MODFileFormat *module, const u_char *sample_data) {
 	}
 
 	_module_data = (const u_char *)&module->pattern_table[0];
-	size = 132 + _channels * 0x100 * (max_pattern_id + 1);
+	size = 132 + mod_channels * 0x100 * (max_pattern_id + 1);
 
 	if( sample_data && (sample_data != (const u_char *)-1) ) {
 		spu_upload_instruments(
@@ -287,13 +364,14 @@ static u_int _load_internal(MODFileFormat *module, const u_char *sample_data) {
 			0x1010, _module_data + size, current_spu_address - 0x1010);
 	}
 
-	_current_order = 0;
-	_current_pattern = module->pattern_table[0];
-	_current_row = 0;
+	mod_current_order = 0;
+	mod_current_pattern = module->pattern_table[0];
+	mod_current_row = 0;
 
 	_speed = 6;
 	_tick = 6;
-	_row_pointer = _module_data + 132 + _current_pattern * _channels * 0x100;
+	_row_pointer
+		= _module_data + 132 + mod_current_pattern * mod_channels * 0x100;
 
 	for( i = 0; i < 24; ++i ) {
 		spu_reset_voice(i);
@@ -341,14 +419,14 @@ static void _set_bpm(u_int bpm) {
 		}
 	}
 
-	_hblanks = base / bpm;
+	mod_hblanks = base / bpm;
 }
 
 static void _update_effect(void) {
 	u_int channel;
 
 	const u_char *row_pointer = _row_pointer;
-	const u_int channels = _channels;
+	const u_int channels = mod_channels;
 
 	for( channel = 0; channel < channels; ++channel ) {
 		const u_char fx23 = row_pointer[3];
@@ -493,6 +571,7 @@ static inline void _do_vibrato_effect(SPUChannelData *const data, u_int id) {
 	case 0: /* Sine (retrigger) */
 	case 3: /* 3 should be random, but it's barely supported anyways... */
 		mutation = SINE_TABLE[mutation];
+		break;
 	case 1: /* Sawtooth (retrigger) */
 		if( data->vibrato < 0 ) {
 			mutation *= -8;
@@ -536,6 +615,7 @@ static inline void _do_tremolo_effect(SPUChannelData *const data, u_int id) {
 	case 0: /* Sine (retrigger) */
 	case 3: /* 3 should be random, but it's barely supported anyways... */
 		mutation = SINE_TABLE[mutation];
+		break;
 	case 1: /* Sawtooth (retrigger) */
 		if( data->fx[0] & 0x80 ) {
 			mutation *= -8;
@@ -594,6 +674,260 @@ static inline void _do_volume_slide_effect(
 
 	data->volume = volume;
 	_set_voice_volume(id, volume);
+}
+
+static void _update_row(void) {
+	u_int channel;
+	const u_int channels = mod_channels;
+
+	if( _change_order_next_tick ) {
+		u_int new_order = _next_order;
+		if( new_order >= mod_song_length ) {
+			new_order = 0;
+		}
+
+		mod_current_row = 0;
+		mod_current_order = new_order;
+		mod_current_pattern = _module_data[new_order];
+	}
+
+	if( _change_row_next_tick ) {
+		u_int new_row = (_next_row >> 4) * 10 + (_next_row & 0x0f);
+		if( new_row >= 64 ) {
+			new_row = 0;
+		}
+
+		mod_current_row = new_row;
+		if( _change_order_next_tick ) {
+			if( ++mod_current_order >= mod_song_length ) {
+				mod_current_order = 0;
+			}
+
+			mod_current_pattern = _module_data[mod_current_order];
+		}
+	}
+
+	_change_row_next_tick = false;
+	_change_order_next_tick = false;
+
+	_row_pointer = _module_data + 132 + mod_current_pattern * channels * 0x100
+		+ mod_current_row * channels * 4;
+	const u_char *row_pointer = _row_pointer;
+
+	for( channel = 0; channel < channels; ++channel ) {
+		short volume;
+		u_char fx, fx0, fx1, fx2, fx3, fx23;
+		u_int sample_id, period;
+		int new_period;
+
+		SPUChannelData *const data = &_spu_channel_data[channel];
+
+		fx0 = row_pointer[0];
+		fx1 = row_pointer[2];
+		sample_id = (fx0 & 0xf0) | (fx1 >> 4);
+		period = ((fx0 & 0x0f) << 8) | row_pointer[1];
+
+		fx23 = row_pointer[3];
+		fx2 = fx23 & 0x0f;
+		fx3 = fx23 >> 4;
+
+		fx1 &= 0x0f;
+		if( fx1 != 9 ) {
+			data->sample_pos = 0;
+		}
+
+		if( sample_id != 0 ) {
+			u_short start_addr;
+			SPUInstrumentData const *instrument
+				= &_spu_instrument_data[sample_id];
+
+			data->sample_id = --sample_id;
+
+			volume = instrument->volume;
+			if( volume > 63 ) {
+				volume = 63;
+			}
+
+			data->volume = volume;
+			if( fx1 != 7 ) {
+				_set_voice_volume(channel, volume);
+			}
+
+			start_addr = (instrument->base_address << 4) + data->sample_pos;
+			spu_set_voice_sample_start_addr(channel, start_addr);
+		}
+
+		if( period != 0 ) {
+			int period_idx;
+			for( period_idx = 35; period_idx > 0; --period_idx ) {
+				if( PERIOD_TABLE[period_idx] == period ) {
+					break;
+				}
+			}
+
+			data->note = period_idx
+				+ _spu_instrument_data[data->sample_id].fine_tune * 36;
+
+			fx = data->fx[3];
+			if( (fx & 0x0f) < 4 ) {
+				data->vibrato = 0;
+			}
+
+			if( (fx >> 4) < 4 ) {
+				data->fx[0] = 0;
+			}
+
+			if( (fx1 != 3) && (fx1 != 5) ) {
+				spu_wait_idle();
+				spu_key_on(1 << channel);
+				data->period = PERIOD_TABLE[data->note];
+			}
+
+			new_period = data->period;
+			_set_voice_sample_rate(channel, new_period);
+		}
+
+		switch( fx1 ) {
+		case FX_GLISSANDO:
+			if( fx23 != 0 ) {
+				data->slide_speed = fx23;
+			}
+			if( period != 0 ) {
+				data->slide_to = PERIOD_TABLE[data->note];
+			}
+			break;
+		case FX_VIBRATO:
+			if( fx3 != 0 ) {
+				fx = data->fx[1];
+				fx &= ~0x0f;
+				fx |= fx3;
+				data->fx[1] = fx;
+			}
+			if( fx2 != 0 ) {
+				fx = data->fx[1];
+				fx &= ~0xf0;
+				fx |= fx3 << 4;
+				data->fx[1] = fx;
+			}
+			break;
+		case FX_TREMOLO:
+			if( fx3 != 0 ) {
+				fx = data->fx[2];
+				fx &= ~0x0f;
+				fx |= fx3;
+				data->fx[2] = fx;
+			}
+			if( fx2 != 0 ) {
+				fx = data->fx[2];
+				fx &= ~0xf0;
+				fx |= fx2 << 4;
+				data->fx[2] = fx;
+			}
+			break;
+		case FX_SAMPLE_JUMP:
+			if( fx23 != 0 ) {
+				data->sample_pos = fx23 << 7;
+			}
+			break;
+		case FX_ORDER_JUMP:
+			if( !_change_order_next_tick ) {
+				_change_order_next_tick = 1;
+				_next_order = fx23;
+			}
+			break;
+		case FX_SET_VOLUME:
+			volume = fx23;
+			if( volume > 64 ) {
+				volume = 63;
+			}
+
+			data->volume = volume;
+			_set_voice_volume(channel, volume);
+			break;
+		case FX_PATTERN_BREAK:
+			if( !_change_row_next_tick ) {
+				_change_row_next_tick = true;
+				_next_row = fx23;
+			}
+			break;
+		case FX_EXTENDED:
+			switch( fx3 ) {
+			case 1: /* Fine slide up */
+				new_period = data->period;
+				new_period -= fx2;
+				data->period = new_period;
+				_set_voice_sample_rate(channel, new_period);
+				break;
+			case 2: /* Fine slide down */
+				new_period = data->period;
+				new_period += fx2;
+				data->period = new_period;
+				_set_voice_sample_rate(channel, new_period);
+				break;
+			case 4: /* Set vibrato waveform */
+				fx = data->fx[3];
+				fx &= ~0x0f;
+				fx |= fx2;
+				data->fx[3] = fx;
+				break;
+			case 5: /* Set finetune value */
+				_spu_instrument_data[sample_id].fine_tune = fx2;
+				break;
+			case 6: /* Loop pattern */
+				if( _loop_count-- == 0 ) {
+					_loop_count = fx2;
+				}
+				if( _loop_count != 0 ) {
+					mod_current_row = _loop_start;
+				}
+				break;
+			case 7: /* Set tremolo waveform */
+				fx = data->fx[3];
+				fx &= ~0xf0;
+				fx |= fx2 << 4;
+				data->fx[3] = fx;
+				break;
+			case 10: /* Fine volume up */
+				volume = data->volume;
+				volume += fx2;
+				if( volume > 63 ) {
+					volume = 63;
+				}
+
+				data->volume = volume;
+				_set_voice_volume(channel, volume);
+				break;
+			case 11: /* Fine volume down */
+				volume = data->volume;
+				volume -= fx2;
+				if( volume < 0 ) {
+					volume = 0;
+				}
+
+				data->volume = volume;
+				_set_voice_volume(channel, volume);
+				break;
+			case 14: /* Delay pattern */
+				_pattern_delay = fx2;
+				break;
+			}
+
+			break;
+		case FX_SET_SPEED:
+			if( fx23 == 0 ) {
+				break;
+			}
+
+			if( fx23 < 32 ) {
+				_speed = fx23;
+			} else {
+				_set_bpm(fx23);
+			}
+			break;
+		}
+
+		row_pointer += 4;
+	}
 }
 
 static inline void _set_voice_volume(u_int id, u_int volume) {

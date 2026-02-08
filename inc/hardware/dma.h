@@ -1,5 +1,5 @@
-#ifndef GUARD_PSGAME_DMA_H_
-#define GUARD_PSGAME_DMA_H_
+#ifndef GUARD_PSGAME_HARDWARE_DMA_H_
+#define GUARD_PSGAME_HARDWARE_DMA_H_
 
 /* Adapted from the psyqo engine (MIT)
  *
@@ -26,4 +26,4 @@ enum {
 	DMA_GPUOTC = 6,
 };
 
-#endif // !GUARD_PSGAME_DMA_H_
+#endif // !GUARD_PSGAME_HARDWARE_DMA_H_

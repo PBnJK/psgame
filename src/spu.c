@@ -4,10 +4,10 @@
 
 #include <sys/types.h>
 
-#include "hwregs.h"
-#include "dma.h"
+#include "hardware/hwregs.h"
+#include "hardware/dma.h"
 
-#include "spu.h"
+#include "hardware/spu.h"
 
 u_int spu_master_volume = 16384;
 
